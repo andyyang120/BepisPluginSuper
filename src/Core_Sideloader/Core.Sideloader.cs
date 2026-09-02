@@ -857,6 +857,14 @@ namespace Sideloader
 
         #region Hot Reload
 
+        private void Update()
+        {
+            if (HotReloadKey.Value.IsDown() && !isReloading)
+            {
+                StartCoroutine(HotReloadMods());
+            }
+        }
+
         internal static System.Collections.IEnumerator HotReloadMods()
         {
             if (isReloading) yield break;
