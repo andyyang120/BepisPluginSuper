@@ -1,77 +1,156 @@
-# BepisPlugins
-A collection of essential [BepInEx](https://github.com/BepInEx/BepInEx) plugins for Koikatu / Koikatsu Party, EmotionCreators, AI-Shoujo / AI-Girl, HoneySelect2, HoneyCome, SamabakeScramble / Summer Vacation Scramble, and other games by Illusion/Illgames. Check plugin descriptions below for a full list of included plugins. 
+# BepisPluginSuper
 
-If you wish to contribute or need help, check the #help channel on the [Koikatsu discord server](https://discord.gg/hevygx6).
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Upstream](https://img.shields.io/badge/Upstream-IllusionMods%2FBepisPlugins-orange)](https://github.com/IllusionMods/BepisPlugins)
 
-### How to install
-1. Install the latest version of [BepInEx](https://github.com/BepInEx/BepInEx). Make sure it is installed and working before installing BepisPlugins.
-   - For HoneySelect2 and games older than it, get BepInEx 5.
-   - For RoomGirl/HoneyCome and games newer than it, get BepInEx 6 (nightly build 668 or later).
-2. Install the latest version of the [ConfigurationManager](https://github.com/BepInEx/BepInEx.ConfigurationManager) plugin.
-3. Download the latest release archive for your game (specified by the two letter prefix, e.g. AI for AI-Girl) from the releases page (not the "Clone or download" button).
-4. Extract the archive into your game directory (where the game exe and BepInEx folder are located). Replace old files if asked.
+> **BepisPlugins 增强版** — 在保留原版全部功能的基础上，新增 **动态加载** 与 **快捷键热重载** 能力，Mod 修改无需重启游戏，即刷即用。
 
-## Plugin descriptions
-You can see more information about some of the plugins by checking their config files in `BepInEx\config` (or by using the in-game [ConfigurationManager plugin](https://github.com/BepInEx/BepInEx.ConfigurationManager)).
+---
 
-Note: Not all plugins might be available for a given game (not yet ported by anyone, or technically infeasible).
+## 核心新增功能
 
-### BGMLoader
-Loads custom BGMs and clips played on game startup. Stock audio is replaced during runtime by custom clips from BepInEx\BGM and BepInEx\IntroClips directories.
+| **功能**             | **原版** | **本 fork** | **说明**                                                     |
+| -------------------- | -------- | ----------- | ------------------------------------------------------------ |
+| **动态加载**         | **❌**    | **✅**       | **游戏运行时自热重载新增的 `.zip` Mod 包**                   |
+| **快捷键热重载**     | **❌**    | **✅**       | **按下默认快捷键Ctrl+D组合快捷键快捷键即可刷新并加载最新 Mod，无需退出游戏** |
+| **零重启迭代**       | **❌**    | **✅**       | **修改、添加或替换 Mod 后，刷新一下即可生效**                |
+| **添加默认侧载目录** | ❌        | ✅           | 游戏过根目录添加modsOne，在我们从网络，拿到一个新mod时，放入这个隔离modsOne目录，避免mod有问题，影响我们的游戏本体和冲问题，等验证稳定无问题时，移动到默认mods目录 |
+| Sideloader           | ✅        | ✅           | 原版全部功能保留                                             |
+| ExtensibleSaveFormat | ✅        | ✅           | 原版全部功能保留                                             |
+| 其他插件             | ✅        | ✅           | 所有原版插件完整兼容                                         |
 
-[Tutorial on how to replace sound clips and background music using BGMLoader.](https://github.com/IllusionMods/BepisPlugins/wiki/BGM-Loader)
+### 热重载使用方式
 
-### ColorCorrector
-Allows configuration of some post-processing filters. (change of bloom amount, disable saturation filter)
+1. 将新的 Mod 文件（`.zip`，.zipmod）拖入游戏目录的 `Mods` 文件夹
+2. 在游戏中按下 **热重载快捷键**（默认 `Ctrl+D`，可在 `BepInEx\config` 中修改）
+3. 插件自动扫描变更 → 动态加载新增 Mod → 即时生效
+4. 无需保存退出、无需重启游戏
 
-### ExtensibleSaveFormat
-Allows additional data to be saved to character, coordinate and scene cards. The cards are fully compatible with non-modded game, the additional data is lost in that case. This is used by sideloader to store used mod information.
+> **提示**：热重载仅对支持动态加载的 Mod 类型生效（如服装、贴图、道具等）。涉及底层资源替换或脚本注入的 Mod 仍建议重启以确保稳定性。
 
-### InputUnlocker
-Allows user to input longer than normal values to InputFields. This allows longer names and other properties stored as text.
+---
 
-### Screencap
-Creates screenshots based on settings. Can create screenshots of much higher resolution than what the game is running at. It can make screen (F9 key) or character (F11 key) screenshots.
+## 适用游戏
 
-### Sideloader
-Loads mods packaged in .zip archives from the Mods directory without modifying the game files at all. You don't unzip them, just drag and drop to Mods folder in the game root.
+与原 [BepisPlugins](https://github.com/IllusionMods/BepisPlugins) 完全一致：
 
-It prevents mods from colliding with each other (i.e. 2 mods have same item IDs and can't coexist; sideloader automatically assigns correct IDs). It also makes it easy to disable/remove mods with no lasting effects on your game install (just remove the .zip, no game files are changed at any point).
+- Koikatu / Koikatsu Party
+- EmotionCreators
+- AI-Shoujo / AI-Girl
+- HoneySelect2
+- HoneyCome
+- SamabakeScramble / Summer Vacation Scramble
+- 其他 Illusion / Illgames 系游戏
 
-> Note: Sideloader is not available for games by Illgames because of technical reasons (IL2CPP). You will have to use [SardineTail](https://github.com/MaybeSamigroup/SVS-SardineTail/wiki) for them instead.
+---
 
-[More information and tutorial on sideloader-compatible mod creation.](https://github.com/IllusionMods/BepisPlugins/wiki/1-Introduction-to-zipmod-format)
+## 安装方法
 
-[Step-by-step guide for creating a simple texture mod.](https://github.com/IllusionMods/BepisPlugins/wiki/2-How-to-create-a-simple-zipmod)
+### 前置条件
+1. 安装 [BepInEx](https://github.com/BepInEx/BepInEx)
+   - HoneySelect2 及更早游戏 → BepInEx 5
+   - RoomGirl / HoneyCome 及更新游戏 → BepInEx 6 (nightly build 668+)
+2. 安装 [ConfigurationManager](https://github.com/BepInEx/BepInEx.ConfigurationManager)
 
-[Tool for automatically converting old list mods to sideloader-compatible form.](https://github.com/IllusionMods/ZipStudio/releases)
+### 安装本插件
+1. 前往 [Releases](../../releases) 下载对应游戏前缀的压缩包（如 `AI` 代表 AI-Girl）
+2. 解压到游戏根目录（与游戏 `.exe` 和 `BepInEx` 文件夹同级）
+3. 插件记得备份，覆盖旧文件（如有提示）
+4. 启动游戏，按 `F1` 打开 ConfigurationManager 确认插件已加载
 
-### SliderUnlocker
-Allows user to set values outside of the standard 0-100 range on all sliders in the editor.
+---
 
-### IMGUIModule.Il2Cpp.CoreCLR.Patcher
-Fixes issues with IMGUI caused by the game being IL2CPP that prevent other plugins like ConfigurationManager from being displayed correctly.
+## 配置项
 
-## Removed plugins
+安装后首次启动游戏，会在 `BepInEx\config` 目录生成配置文件：
 
-### Configuration Manager
-Moved to https://github.com/BepInEx/BepInEx.ConfigurationManager
+| 配置项              | 默认值   | 说明             |
+| ------------------- | -------- | ---------------- |
+| `HotReloadKey`      | `Ctrl+D` | 热重载快捷键     |
+| `EnableDynamicLoad` | `true`   | 是否启用动态加载 |
 
-### DeveloperConsole
-Moved to https://github.com/BepInEx/DeveloperConsole
+> 修改配置后无需重启游戏，ConfigurationManager 内修改即时生效。
 
-### IPALoader
-Moved to https://github.com/BepInEx/IPALoaderX
+---
 
-### MessageCenter
-Moved to https://github.com/BepInEx/MessageCenter
+## 与原版的关系
 
-### ScriptEngine
-Moved to https://github.com/BepInEx/BepInEx.Debug
+本项目是 [IllusionMods/BepisPlugins](https://github.com/IllusionMods/BepisPlugins) 的 **Fork & 功能增强** 版本。
 
-## Obsolete plugins
-### DynamicTranslationLoader
-Replaced by [XUnity.AutoTranslator](https://github.com/bbepis/XUnity.AutoTranslator)
+- **原版**：Mod 加载仅在游戏启动时执行一次，新增/修改 Mod 必须重启游戏才能生效
+- **本版**：在保留原版全部插件功能与兼容性的前提下，通过新增动态加载模块，实现了运行时的 Mod 热插拔
 
-### ResourceRedirector
-Replaced by [XUnity.ResourceRedirector](https://github.com/bbepis/XUnity.AutoTranslator)
+---
+
+## 构建
+
+```bash
+# 克隆仓库
+git clone https://github.com/andyyang120/BepisPluginSuper.git
+cd BepisPluginSuper
+
+# 还原 NuGet 包
+nuget restore
+
+# 构建 Release
+msbuild BepisPlugins.sln /p:Configuration=Release
+```
+## 开源协议
+
+本项目基于上游 [IllusionMods/BepisPlugins](https://github.com/IllusionMods/BepisPlugins) 的 **MIT 协议** 进行分发。
+
+- 原版代码版权归属 [IllusionMods](https://github.com/IllusionMods) 及其贡献者
+- 新增功能（动态加载、热重载模块）版权归属本项目维护者
+
+详见 [LICENSE](https://www.kimi.com/chat/LICENSE) 文件。
+
+------
+
+## 致谢
+
+- [IllusionMods](https://github.com/IllusionMods) — 原版 BepisPlugins 的创建者与维护者
+- [BepInEx](https://github.com/BepInEx/BepInEx) — 强大的 Unity / IL2CPP 插件框架
+- 所有为社区贡献 Mod 的作者
+
+------
+
+> **免责声明**：本插件仅供学习与技术交流使用。使用本插件产生的任何后果由使用者自行承担。
+
+plain
+
+```
+---
+
+LICENSE
+
+​```text
+MIT License
+
+Copyright (c) 2024 andyyang120 (BepisPluginSuper modifications)
+Copyright (c) 2018-2024 IllusionMods (Original BepisPlugins)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+NOTICE: This project is a fork of https://github.com/IllusionMods/BepisPlugins
+The original work is copyright IllusionMods and licensed under MIT.
+Modifications (dynamic loading, hot-reload functionality) are copyright
+andyyang120 and also licensed under MIT.
+```
