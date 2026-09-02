@@ -1,56 +1,31 @@
-name: Build and Release
+name: Build BepisPluginSuper
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: windows-latest
-    
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v2
-    
-    - name: Setup NuGet
-      uses: NuGet/setup-nuget@v2
-    
-    - name: Restore NuGet packages
-      run: nuget restore BepisPlugins.sln
-    
-    - name: Build Release
-      run: msbuild BepisPlugins.sln /p:Configuration=Release /p:Platform="Any CPU"
-    
-    - name: Package AI
-      shell: pwsh
-      run: |
-        New-Item -ItemType Directory -Force -Path "release/AI/BepInEx/plugins"
-        Copy-Item -Path "bin/Release/AI*/*.dll" -Destination "release/AI/BepInEx/plugins/" -ErrorAction SilentlyContinue
-        Compress-Archive -Path "release/AI/*" -DestinationPath "AI-BepisPluginSuper-${{ github.ref_name }}.zip"
-    
-    - name: Package HS2
-      shell: pwsh
-      run: |
-        New-Item -ItemType Directory -Force -Path "release/HS2/BepInEx/plugins"
-        Copy-Item -Path "bin/Release/HS2*/*.dll" -Destination "release/HS2/BepInEx/plugins/" -ErrorAction SilentlyContinue
-        Compress-Archive -Path "release/HS2/*" -DestinationPath "HS2-BepisPluginSuper-${{ github.ref_name }}.zip"
-    
-    - name: Package KK
-      shell: pwsh
-      run: |
-        New-Item -ItemType Directory -Force -Path "release/KK/BepInEx/plugins"
-        Copy-Item -Path "bin/Release/KK*/*.dll" -Destination "release/KK/BepInEx/plugins/" -ErrorAction SilentlyContinue
-        Compress-Archive -Path "release/KK/*" -DestinationPath "KK-BepisPluginSuper-${{ github.ref_name }}.zip"
-    
-    - name: Create Release
+    - uses: microsoft/setup-msbuild@v2
+    - uses: NuGet/setup-nuget@v2
+    - run: nuget restore BepisPlugins.sln
+    - run: msbuild BepisPlugins.sln /p:Configuration=Release /p:Platform="Any CPU"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: BepisPluginSuper-Build
+        path: '**/bin/Release/*.dll'
+    - if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
-        files: |
-          AI-BepisPluginSuper-*.zip
-          HS2-BepisPluginSuper-*.zip
-          KK-BepisPluginSuper-*.zip
+        files: '**/bin/Release/*.dll'
+        generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
