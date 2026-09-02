@@ -34,9 +34,9 @@ namespace Sideloader
         /// <summary> Plugin GUID </summary>
         public const string GUID = "com.bepis.bepinex.sideloader";
         /// <summary> Plugin name </summary>
-        public const string PluginName = "Sideloader";
+        public const string PluginName = "Sideloader (Hot Reload)";
         /// <summary> Plugin version </summary>
-        public const string Version = BepisPlugins.Constants.Version;
+        public const string Version = "21.2.0"; // Hot Reload Edition
         internal static new ManualLogSource Logger;
 
         /// <summary> Directory from which to load mods </summary>
@@ -56,6 +56,9 @@ namespace Sideloader
         private static readonly HashSet<string> PngFolderList = new HashSet<string>();
         private static readonly HashSet<string> PngFolderOnlyList = new HashSet<string>();
 
+        private static bool isReloading = false;
+        private static string _pluginVersion;
+
         internal static ConfigEntry<bool> MissingModWarning { get; private set; }
         internal static ConfigEntry<bool> DebugLogging { get; private set; }
         internal static ConfigEntry<bool> DebugLoggingResolveInfo { get; private set; }
@@ -65,6 +68,7 @@ namespace Sideloader
         internal static ConfigEntry<bool> MigrationEnabled { get; private set; }
         internal static ConfigEntry<string> AdditionalModsDirectory { get; private set; }
         internal static ConfigEntry<bool> CachingEnabled { get; private set; }
+        internal static ConfigEntry<KeyboardShortcut> HotReloadKey { get; private set; }
 
         [UsedImplicitly]
         private void Awake()
@@ -103,6 +107,9 @@ namespace Sideloader
                 "Additional directory to load zipmods from.");
             CachingEnabled = Config.Bind("General", "Cache zipmod metadata", true,
                 "Drastically speeds up game startup speed, especially on slow HDDs, by not parsing zipmods unless they get changed. Disable to force sideloader to always read and parse all zipmods.");
+            HotReloadKey = Config.Bind("Hot Reload", "Reload Key",
+                new KeyboardShortcut(KeyCode.D, KeyCode.LeftControl),
+                "Press this key combination to hot-reload zipmods at runtime without restarting the game. Click the box and press your desired keys.");
 
             if (!Directory.Exists(ModsDirectory))
                 Logger.LogWarning("Could not find the mods directory: " + ModsDirectory);
@@ -111,6 +118,7 @@ namespace Sideloader
                 Logger.LogWarning("Could not find the additional mods directory specified in config: " + AdditionalModsDirectory.Value);
 
             LoadModsFromDirectories(ModsDirectory, AdditionalModsDirectory.Value);
+            _pluginVersion = Info.Metadata.Version.ToString();
         }
 
         #region Data loading
@@ -463,7 +471,7 @@ namespace Sideloader
         /// <summary>
         /// Build a list of folders that contain .pngs but do not match an existing asset bundle
         /// </summary>
-        private void BuildPngOnlyFolderList()
+        private static void BuildPngOnlyFolderList()
         {
             foreach (string folder in PngFolderList) //assetBundlePath
             {
@@ -675,9 +683,9 @@ namespace Sideloader
             string bundle = path.Substring(abdataIndex + "/abdata/".Length);
             if (!File.Exists(path))
             {
-                if (BundleManager.Bundles.TryGetValue(bundle, out List<LazyCustom<AssetBundle>> lazyList))
+                if (BundleManager.Bundles.TryGetValue(bundle, out var entryList))
                 {
-                    context.Bundle = lazyList[0].Instance;
+                    context.Bundle = entryList[0].Lazy.Instance;
                     context.Bundle.name = bundle;
                     context.Complete();
                 }
@@ -718,7 +726,7 @@ namespace Sideloader
         private static readonly string _CacheName = "sideloader_zipmod_cache.bin";
         private static readonly string _CacheDirectory = Paths.CachePath;
         private static readonly string _CachePath = Path.Combine(_CacheDirectory, _CacheName);
-        private void WriteCache()
+        private static void WriteCache()
         {
             // Write all found zipmod metadata to the cache
             // Can NOT serialize in background while AddAllLists->GenerateStudioResolutionInfo is running since it modifies StudioResolveInfo.Entries (and possibly others)
@@ -771,7 +779,7 @@ namespace Sideloader
                     });
                 }
 
-                File.WriteAllText(_CachePath + ".ver", Info.Metadata.Version.ToString());
+                File.WriteAllText(_CachePath + ".ver", _pluginVersion);
                 wait.WaitOne();
                 Logger.LogDebug($"Saved zipmod cache to \"{_CachePath}\" in {swCacheWrite.ElapsedMilliseconds}ms using {threadCount} threads");
             }
@@ -781,7 +789,7 @@ namespace Sideloader
             }
         }
 
-        private Dictionary<string, ZipmodInfo> LoadCache()
+        private static Dictionary<string, ZipmodInfo> LoadCache()
         {
             var cache = new Dictionary<string, ZipmodInfo>();
             if (!CachingEnabled.Value) return cache;
@@ -791,8 +799,8 @@ namespace Sideloader
                 if (File.Exists(_CachePath + ".ver"))
                 {
                     var cacheVer = new Version(File.ReadAllText(_CachePath + ".ver"));
-                    if (cacheVer != Info.Metadata.Version)
-                        throw new OperationCanceledException($"Cache version ({cacheVer}) doesn't match Sideloader version ({Info.Metadata.Version}), it has to be regenerated.");
+                    if (cacheVer != new Version(_pluginVersion))
+                        throw new OperationCanceledException($"Cache version ({cacheVer}) doesn't match Sideloader version ({_pluginVersion}), it has to be regenerated.");
 
                     var cachePartFiles = Directory.GetFiles(_CacheDirectory, _CacheName + ".*")
                                                   .Where(x => !x.EndsWith(".ver", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -843,6 +851,358 @@ namespace Sideloader
             }
 
             return cache;
+        }
+
+        #endregion
+
+        #region Hot Reload
+
+        internal static System.Collections.IEnumerator HotReloadMods()
+        {
+            if (isReloading) yield break;
+            isReloading = true;
+
+            var swTotal = System.Diagnostics.Stopwatch.StartNew();
+            Logger.LogInfo("=== [Sideloader Hot Reload] Started ===");
+
+            RunDiffEngine(out var needToBeRemoved, out var needToBeLoaded);
+            Logger.LogInfo($"[Hot Reload] Diff result: {needToBeRemoved.Count} removed, {needToBeLoaded.Count} added.");
+
+            if (needToBeRemoved.Count == 0 && needToBeLoaded.Count == 0)
+            {
+                Logger.LogInfo("[Hot Reload] No changes detected.");
+                isReloading = false;
+                yield break;
+            }
+
+            var parsedNewMods = new List<ZipmodInfo>();
+            var comparer = new ManifestVersionComparer();
+            foreach (var zipmod in needToBeLoaded)
+            {
+                try
+                {
+                    var archive = zipmod.GetZipFile();
+                    zipmod.Manifest = Manifest.LoadFromZip(archive);
+
+                    if (zipmod.Manifest.Games.Count != 0 && !zipmod.Manifest.Games.Select(x => x.ToLower()).Any(GameNameList.Contains))
+                    {
+                        Logger.LogInfo($"[Hot Reload] Skipping \"{zipmod.RelativeFileName}\" (game mismatch).");
+                        zipmod.Dispose();
+                        continue;
+                    }
+                    parsedNewMods.Add(zipmod);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError($"[Hot Reload] Manifest parse failed for \"{zipmod.RelativeFileName}\": {ex.Message}");
+                    zipmod.Error = ex.Message;
+                    zipmod.Dispose();
+                }
+            }
+            yield return null;
+
+            foreach (var newMod in parsedNewMods.ToList())
+            {
+                if (Manifests.TryGetValue(newMod.Manifest.GUID, out var existingManifest))
+                {
+                    var existingZipmod = Zipmods.Values.FirstOrDefault(x => x.Manifest?.GUID == newMod.Manifest.GUID && x.Loaded);
+                    if (existingZipmod != null)
+                    {
+                        int cmp = 0;
+                        try { cmp = comparer.Compare(newMod.Manifest.Version, existingManifest.Version); }
+                        catch { cmp = string.Compare(newMod.Manifest.Version, existingManifest.Version, StringComparison.OrdinalIgnoreCase); }
+
+                        if (cmp > 0)
+                        {
+                            Logger.LogInfo($"[Hot Reload] Will replace {newMod.Manifest.GUID}: {existingManifest.Version} -> {newMod.Manifest.Version}");
+                            if (!needToBeRemoved.Contains(existingZipmod))
+                                needToBeRemoved.Add(existingZipmod);
+                        }
+                        else
+                        {
+                            Logger.LogInfo($"[Hot Reload] Skipping older version of {newMod.Manifest.GUID}");
+                            parsedNewMods.Remove(newMod);
+                            newMod.Dispose();
+                        }
+                    }
+                }
+            }
+
+            if (needToBeRemoved.Count > 0)
+            {
+                Logger.LogInfo($"[Hot Reload] Purging {needToBeRemoved.Count} removed mods...");
+                foreach (var zipmod in needToBeRemoved)
+                    PurgeSingleMod(zipmod);
+                yield return null;
+            }
+
+            var gatheredResolutionInfos = new List<ResolveInfo>();
+            var gatheredMigrationInfos = new List<MigrationInfo>();
+#if AI || HS2
+            var gatheredHeadPresetInfos = new List<HeadPresetInfo>();
+            var gatheredFaceSkinInfos = new List<FaceSkinInfo>();
+#endif
+            var bundlesToLoad = new List<BundleLoadInfo>();
+
+            if (parsedNewMods.Count > 0)
+            {
+                Logger.LogInfo($"[Hot Reload] Loading {parsedNewMods.Count} new mods...");
+                foreach (var zipmod in parsedNewMods)
+                {
+                    try
+                    {
+                        zipmod.LoadAllLists();
+
+                        Zipmods.Add(zipmod.FileName, zipmod);
+                        ZipArchives[zipmod.Manifest.GUID] = zipmod.FileName;
+                        Manifests[zipmod.Manifest.GUID] = zipmod.Manifest;
+
+                        bundlesToLoad.AddRange(zipmod.BundleInfos);
+                        AddAllLists(zipmod, gatheredResolutionInfos);
+                        BuildPngFolderList(zipmod);
+
+                        gatheredMigrationInfos.AddRange(zipmod.Manifest.MigrationList);
+#if AI || HS2
+                        gatheredHeadPresetInfos.AddRange(zipmod.Manifest.HeadPresetList);
+                        gatheredFaceSkinInfos.AddRange(zipmod.Manifest.FaceSkinList);
+#endif
+
+                        zipmod.Loaded = true;
+                        Logger.LogInfo($"[Hot Reload] Loaded: {zipmod.Manifest.Name} {zipmod.Manifest.Version}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogError($"[Hot Reload] Failed to load \"{zipmod.RelativeFileName}\": {ex}");
+                        zipmod.Error = ex.ToString();
+                        zipmod.Dispose();
+                    }
+                    yield return null;
+                }
+
+                foreach (var bundleInfo in bundlesToLoad)
+                {
+                    BundleManager.AddBundleLoader(bundleInfo.LoadBundle, bundleInfo.BundleTrimmedPath, bundleInfo.ArchiveFilename);
+                }
+            }
+
+            if (needToBeRemoved.Count > 0)
+            {
+                foreach (var zipmod in needToBeRemoved.Where(x => x.Manifest != null))
+                {
+                    UniversalAutoResolver.RemoveResolveInfosByGuid(zipmod.Manifest.GUID);
+                    UniversalAutoResolver.RemoveMigrationInfosByGuid(zipmod.Manifest.GUID);
+#if AI || HS2
+                    UniversalAutoResolver.RemoveHeadPresetInfosByGuid(zipmod.Manifest.GUID);
+                    UniversalAutoResolver.RemoveFaceSkinInfosByGuid(zipmod.Manifest.GUID);
+#endif
+#if !EC
+                    UniversalAutoResolver.RemoveStudioResolutionInfosByGuid(zipmod.Manifest.GUID);
+#endif
+                }
+            }
+
+            if (gatheredResolutionInfos.Count > 0)
+                UniversalAutoResolver.AppendResolveInfos(gatheredResolutionInfos);
+            if (gatheredMigrationInfos.Count > 0)
+                UniversalAutoResolver.AppendMigrationInfos(gatheredMigrationInfos);
+#if AI || HS2
+            if (gatheredHeadPresetInfos.Count > 0)
+                UniversalAutoResolver.AppendHeadPresetInfos(gatheredHeadPresetInfos);
+            if (gatheredFaceSkinInfos.Count > 0)
+            {
+                UniversalAutoResolver.AppendFaceSkinInfos(gatheredFaceSkinInfos);
+                UniversalAutoResolver.ResolveFaceSkins();
+            }
+#endif
+
+            yield return null;
+
+            RefreshAllUIs();
+            yield return null;
+
+            RunGarbageCollection();
+            UpdateCacheAsync();
+
+            Logger.LogInfo($"=== [Sideloader Hot Reload] Completed in {swTotal.ElapsedMilliseconds}ms ===");
+            isReloading = false;
+        }
+
+        private static void RunDiffEngine(out List<ZipmodInfo> needToBeRemoved, out List<ZipmodInfo> needToBeLoaded)
+        {
+            needToBeRemoved = new List<ZipmodInfo>();
+            needToBeLoaded = new List<ZipmodInfo>();
+
+            var currentDiskFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var modDirectories = new[] { ModsDirectory, AdditionalModsDirectory.Value }
+                .Where(Directory.Exists)
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var dir in modDirectories)
+            {
+                foreach (var file in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+                {
+                    if (file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
+                        file.EndsWith(".zipmod", StringComparison.OrdinalIgnoreCase))
+                    {
+                        currentDiskFiles.Add(file);
+                    }
+                }
+            }
+
+            foreach (var kvp in Zipmods)
+            {
+                if (!currentDiskFiles.Contains(kvp.Key))
+                    needToBeRemoved.Add(kvp.Value);
+            }
+
+            foreach (var file in currentDiskFiles)
+            {
+                if (!Zipmods.ContainsKey(file))
+                    needToBeLoaded.Add(new ZipmodInfo(file));
+            }
+        }
+
+        private static void PurgeSingleMod(ZipmodInfo zipmod)
+        {
+            if (zipmod == null) return;
+
+            zipmod.Dispose();
+
+            Zipmods.Remove(zipmod.FileName);
+
+            if (zipmod.Manifest != null)
+            {
+                bool guidStillUsed = Zipmods.Values.Any(x => x.Manifest?.GUID == zipmod.Manifest.GUID);
+                if (!guidStillUsed)
+                {
+                    Manifests.Remove(zipmod.Manifest.GUID);
+                    ZipArchives.Remove(zipmod.Manifest.GUID);
+                }
+            }
+
+            BundleManager.RemoveBundlesBySource(zipmod.FileName);
+
+            if (zipmod.CharaLists != null)
+            {
+                foreach (var data in zipmod.CharaLists)
+                    Lists.ExternalDataList.Remove(data);
+            }
+
+#if !EC
+            if (zipmod.StudioLists != null)
+            {
+                foreach (var data in zipmod.StudioLists)
+                {
+                    if (Lists.ExternalStudioDataList.TryGetValue(data.AssetBundleName, out var list))
+                    {
+                        list.Remove(data);
+                        if (list.Count == 0)
+                            Lists.ExternalStudioDataList.Remove(data.AssetBundleName);
+                    }
+                }
+            }
+
+            if (zipmod.MapLists != null)
+            {
+                foreach (var data in zipmod.MapLists)
+                {
+                    if (Lists.ExternalExcelData.TryGetValue(data.AssetBundleName, out var dict))
+                    {
+                        dict.Remove(data.FileNameWithoutExtension);
+                        if (dict.Count == 0)
+                            Lists.ExternalExcelData.Remove(data.AssetBundleName);
+                    }
+                }
+            }
+
+            if (zipmod.BoneLists != null)
+            {
+                foreach (var data in zipmod.BoneLists)
+                {
+                    if (Lists.ExternalStudioDataList.TryGetValue(data.AssetBundleName, out var list))
+                    {
+                        list.Remove(data);
+                        if (list.Count == 0)
+                            Lists.ExternalStudioDataList.Remove(data.AssetBundleName);
+                    }
+                }
+            }
+#endif
+
+            if (zipmod.PngNames != null)
+            {
+                var pngKeysToRemove = PngList.Where(kvp => kvp.Value == zipmod).Select(kvp => kvp.Key).ToList();
+                foreach (var key in pngKeysToRemove)
+                    PngList.Remove(key);
+            }
+
+            PngFolderList.Clear();
+            foreach (var z in Zipmods.Values.Where(x => x.Loaded))
+                BuildPngFolderList(z);
+            BuildPngOnlyFolderList();
+        }
+
+        private static void RefreshAllUIs()
+        {
+#if AI || HS2
+            try
+            {
+                if (CharaCustom.CustomBase.IsInstance())
+                {
+                    var chaListCtrl = Singleton<Manager.Character>.Instance?.chaListCtrl;
+                    if (chaListCtrl != null)
+                    {
+                        chaListCtrl.LoadListInfoAll();
+                        Logger.LogDebug("[Hot Reload] ChaListControl.LoadListInfoAll() triggered.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning($"[Hot Reload] CharaCustom refresh failed: {ex.Message}");
+            }
+#endif
+
+#if !EC
+            try
+            {
+                if (Studio.Studio.IsInstance())
+                {
+                    Logger.LogDebug("[Hot Reload] Studio data updated. Re-open Add->Item panel if new categories are expected.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning($"[Hot Reload] Studio refresh check failed: {ex.Message}");
+            }
+#endif
+        }
+
+        private static void RunGarbageCollection()
+        {
+            try
+            {
+                System.GC.Collect();
+                Resources.UnloadUnusedAssets();
+                Logger.LogDebug("[Hot Reload] GC and UnloadUnusedAssets completed.");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning($"[Hot Reload] GC failed: {ex.Message}");
+            }
+        }
+
+        private static void UpdateCacheAsync()
+        {
+            try
+            {
+                WriteCache();
+                Logger.LogDebug("[Hot Reload] Cache update triggered.");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning($"[Hot Reload] Cache update failed: {ex.Message}");
+            }
         }
 
         #endregion

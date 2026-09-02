@@ -11,7 +11,16 @@ namespace Sideloader
     public partial class Sideloader : BaseUnityPlugin
     {
         internal static readonly string[] GameNameList = { "hs2", "honeyselect2", "honey select 2" };
-        
+
         private static string FindKoiZipmodDir() => string.Empty;
+
+        private void Update()
+        {
+            if (HotReloadKey.Value.IsDown() && !isReloading)
+            {
+                StartCoroutine(HotReloadMods());
+            }
+        }
     }
 }
+

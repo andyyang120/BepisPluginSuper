@@ -154,9 +154,9 @@ namespace Sideloader
                 {
                     foreach (var kvp in BundleManager.Bundles.Where(x => x.Key.StartsWith(_findFolder)))
                     {
-                        foreach (var lazyList in kvp.Value)
+                        foreach (var entry in kvp.Value)
                         {
-                            foreach (var assetName in lazyList.Instance.GetAllAssetNames())
+                            foreach (var assetName in entry.Lazy.Instance.GetAllAssetNames())
                             {
                                 if (_strLoadFile.ToLower() == Path.GetFileNameWithoutExtension(assetName.ToLower()))
                                 {

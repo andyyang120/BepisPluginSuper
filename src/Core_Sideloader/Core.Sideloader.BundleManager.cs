@@ -10,7 +10,15 @@ namespace Sideloader
 {
     internal static class BundleManager
     {
-        internal static Dictionary<string, List<LazyCustom<AssetBundle>>> Bundles = new Dictionary<string, List<LazyCustom<AssetBundle>>>();
+        internal class BundleEntry
+        {
+            internal LazyCustom<AssetBundle> Lazy;
+            internal string SourceModPath;
+            internal bool IsLoaded;
+            internal AssetBundle LoadedInstance;
+        }
+
+        internal static Dictionary<string, List<BundleEntry>> Bundles = new Dictionary<string, List<BundleEntry>>();
 
         private static long CABCounter;
 
@@ -40,14 +48,42 @@ namespace Sideloader
             Buffer.BlockCopy(cabBytes, 36 - origCabLength, assetBundleData, origCabIndex + 4, origCabLength - 4);
         }
 
-        internal static void AddBundleLoader(Func<AssetBundle> func, string path)
+        internal static void AddBundleLoader(Func<AssetBundle> func, string path, string sourceModPath = null)
         {
-            if (!Bundles.TryGetValue(path, out var lazyList))
+            if (!Bundles.TryGetValue(path, out var entryList))
             {
-                lazyList = new List<LazyCustom<AssetBundle>>();
-                Bundles.Add(path, lazyList);
+                entryList = new List<BundleEntry>();
+                Bundles.Add(path, entryList);
             }
-            lazyList.Add(LazyCustom<AssetBundle>.Create(func));
+            entryList.Add(new BundleEntry { Lazy = LazyCustom<AssetBundle>.Create(func), SourceModPath = sourceModPath });
+        }
+
+        internal static bool RemoveBundlesBySource(string sourceModPath)
+        {
+            if (string.IsNullOrEmpty(sourceModPath)) return false;
+            bool removedAny = false;
+
+            foreach (var kvp in Bundles.ToList())
+            {
+                var entries = kvp.Value;
+                for (int i = entries.Count - 1; i >= 0; i--)
+                {
+                    if (entries[i].SourceModPath == sourceModPath)
+                    {
+                        if (entries[i].IsLoaded && entries[i].LoadedInstance != null)
+                        {
+                            entries[i].LoadedInstance.Unload(true);
+                            entries[i].LoadedInstance = null;
+                            entries[i].IsLoaded = false;
+                        }
+                        entries.RemoveAt(i);
+                        removedAny = true;
+                    }
+                }
+                if (entries.Count == 0)
+                    Bundles.Remove(kvp.Key);
+            }
+            return removedAny;
         }
 
         internal static bool TryGetObjectFromName<T>(string name, string assetBundle, out T obj) where T : UnityEngine.Object
@@ -63,12 +99,14 @@ namespace Sideloader
         {
             obj = null;
 
-            if (Bundles.TryGetValue(assetBundle, out var lazyBundleList))
+            if (Bundles.TryGetValue(assetBundle, out var entryList))
             {
                 var found = -1;
-                for (int i = 0; i < lazyBundleList.Count; i++)
+                for (int i = 0; i < entryList.Count; i++)
                 {
-                    AssetBundle bundle = lazyBundleList[i];
+                    AssetBundle bundle = entryList[i].Lazy;
+                    entryList[i].IsLoaded = true;
+                    entryList[i].LoadedInstance = bundle;
                     if (bundle.Contains(name))
                     {
                         // If using debug logging, check all override bundles for this asset and warn if multiple copies exist.
@@ -102,3 +140,4 @@ namespace Sideloader
         }
     }
 }
+

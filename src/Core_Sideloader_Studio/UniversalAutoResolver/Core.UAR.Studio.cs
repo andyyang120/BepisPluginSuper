@@ -687,5 +687,40 @@ namespace Sideloader.AutoResolver
                     return Traverse.Create(Studio.Studio.Instance.sceneInfo).Field("mapInfo").Field("no");
             }
         }
+
+        internal static void RemoveStudioResolutionInfosByGuid(string guid)
+        {
+            guid = guid?.Trim();
+            if (string.IsNullOrEmpty(guid)) return;
+
+            var toRemove = _LoadedStudioResolutionInfos
+                .Where(x => x.GUID.Equals(guid, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var item in toRemove)
+            {
+                _LoadedStudioResolutionInfos.Remove(item);
+
+                if (StudioResolutionInfoLocalSlotLookup.TryGetValue(item.LocalSlot, out var localList))
+                {
+                    localList.Remove(item);
+                    if (localList.Count == 0)
+                        StudioResolutionInfoLocalSlotLookup.Remove(item.LocalSlot);
+                }
+
+                if (StudioResolutionInfoGuidLookup.TryGetValue(item.GUID, out var slotDict))
+                {
+                    if (slotDict.TryGetValue(item.Slot, out var slotList))
+                    {
+                        slotList.Remove(item);
+                        if (slotList.Count == 0)
+                            slotDict.Remove(item.Slot);
+                    }
+                    if (slotDict.Count == 0)
+                        StudioResolutionInfoGuidLookup.Remove(item.GUID);
+                }
+            }
+            _lastLoadedStudioResolutionInfoCount = _LoadedStudioResolutionInfos.Count;
+        }
     }
 }

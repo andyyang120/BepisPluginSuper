@@ -35,6 +35,13 @@ namespace Sideloader.AutoResolver
         private static ILookup<int, FaceSkinInfo> _faceSkinInfoLookupLocalSlot;
 #endif
 
+        private static List<ResolveInfo> _allResolutionInfos = new List<ResolveInfo>();
+        private static List<MigrationInfo> _allMigrationInfos = new List<MigrationInfo>();
+#if AI || HS2
+        private static List<HeadPresetInfo> _allHeadPresetInfos = new List<HeadPresetInfo>();
+        private static List<FaceSkinInfo> _allFaceSkinInfos = new List<FaceSkinInfo>();
+#endif
+
         /// <summary>
         /// The starting point for UAR IDs
         /// </summary>
@@ -151,7 +158,11 @@ namespace Sideloader.AutoResolver
             return _headPresetInfoLookupSlot?[slot].FirstOrDefault(x => x.HeadGUID == guid && x.Preset == preset);
         }
 
-        internal static void SetHeadPresetInfos(ICollection<HeadPresetInfo> results) => _headPresetInfoLookupSlot = results.ToLookup(info => info.HeadID);
+        internal static void SetHeadPresetInfos(ICollection<HeadPresetInfo> results)
+        {
+            _allHeadPresetInfos = results?.ToList() ?? new List<HeadPresetInfo>();
+            _headPresetInfoLookupSlot = _allHeadPresetInfos.ToLookup(info => info.HeadID);
+        }
 
         internal static FaceSkinInfo TryGetFaceSkinInfo(int slot, string guid)
         {
@@ -165,20 +176,21 @@ namespace Sideloader.AutoResolver
 
         internal static void SetResolveInfos(ICollection<ResolveInfo> results)
         {
-            _resolveInfoLookupSlot = results.ToLookup(info => info.Slot);
-            _resolveInfoLookupLocalSlot = results.ToLookup(info => info.LocalSlot);
-            LoadedResolutionInfo = results;
+            _allResolutionInfos = results?.ToList() ?? new List<ResolveInfo>();
+            RebuildResolveLookups();
         }
         internal static void SetMigrationInfos(ICollection<MigrationInfo> results)
         {
-            _migrationInfoLookupGUID = results.ToLookup(info => info.GUIDOld);
-            _migrationInfoLookupSlot = results.ToLookup(info => info.IDOld);
+            _allMigrationInfos = results?.ToList() ?? new List<MigrationInfo>();
+            _migrationInfoLookupGUID = _allMigrationInfos.ToLookup(info => info.GUIDOld);
+            _migrationInfoLookupSlot = _allMigrationInfos.ToLookup(info => info.IDOld);
         }
 
 #if AI || HS2
         internal static void SetFaceSkinInfos(ICollection<FaceSkinInfo> results)
         {
-            foreach (var info in results)
+            _allFaceSkinInfos = results?.ToList() ?? new List<FaceSkinInfo>();
+            foreach (var info in _allFaceSkinInfos)
             {
                 var resolveInfo = TryGetResolutionInfo(info.SkinSlot, ChaListDefine.CategoryNo.ft_skin_f, info.SkinGUID);
                 if (resolveInfo != null)
@@ -191,8 +203,8 @@ namespace Sideloader.AutoResolver
                 }
             }
 
-            _faceSkinInfoLookupSlot = results.ToLookup(info => info.SkinSlot);
-            _faceSkinInfoLookupLocalSlot = results.ToLookup(info => info.SkinLocalSlot);
+            _faceSkinInfoLookupSlot = _allFaceSkinInfos.ToLookup(info => info.SkinSlot);
+            _faceSkinInfoLookupLocalSlot = _allFaceSkinInfos.ToLookup(info => info.SkinLocalSlot);
         }
 #endif
 
@@ -627,5 +639,95 @@ namespace Sideloader.AutoResolver
             return Manager.Scene.Instance.NowSceneNames;
 #endif
         }
+
+        // === HOT RELOAD ADDED: 增量增删与重建接口 ===
+
+        internal static void RemoveResolveInfosByGuid(string guid)
+        {
+            if (string.IsNullOrEmpty(guid)) return;
+            guid = guid.Trim();
+            _allResolutionInfos.RemoveAll(x => x.GUID == guid);
+            RebuildResolveLookups();
+        }
+
+        internal static void AppendResolveInfos(ICollection<ResolveInfo> newInfos)
+        {
+            if (newInfos == null || newInfos.Count == 0) return;
+            _allResolutionInfos.AddRange(newInfos);
+            RebuildResolveLookups();
+        }
+
+        private static void RebuildResolveLookups()
+        {
+            _resolveInfoLookupSlot = _allResolutionInfos.ToLookup(info => info.Slot);
+            _resolveInfoLookupLocalSlot = _allResolutionInfos.ToLookup(info => info.LocalSlot);
+            LoadedResolutionInfo = _allResolutionInfos;
+        }
+
+        internal static void RemoveMigrationInfosByGuid(string guid)
+        {
+            if (string.IsNullOrEmpty(guid)) return;
+            guid = guid.Trim();
+            _allMigrationInfos.RemoveAll(x => x.GUIDOld == guid);
+            _migrationInfoLookupGUID = _allMigrationInfos.ToLookup(info => info.GUIDOld);
+            _migrationInfoLookupSlot = _allMigrationInfos.ToLookup(info => info.IDOld);
+        }
+
+        internal static void AppendMigrationInfos(ICollection<MigrationInfo> newInfos)
+        {
+            if (newInfos == null || newInfos.Count == 0) return;
+            _allMigrationInfos.AddRange(newInfos);
+            _migrationInfoLookupGUID = _allMigrationInfos.ToLookup(info => info.GUIDOld);
+            _migrationInfoLookupSlot = _allMigrationInfos.ToLookup(info => info.IDOld);
+        }
+
+#if AI || HS2
+        internal static void RemoveHeadPresetInfosByGuid(string guid)
+        {
+            if (string.IsNullOrEmpty(guid)) return;
+            guid = guid.Trim();
+            _allHeadPresetInfos.RemoveAll(x => x.HeadGUID == guid);
+            _headPresetInfoLookupSlot = _allHeadPresetInfos.ToLookup(info => info.HeadID);
+        }
+
+        internal static void AppendHeadPresetInfos(ICollection<HeadPresetInfo> newInfos)
+        {
+            if (newInfos == null || newInfos.Count == 0) return;
+            _allHeadPresetInfos.AddRange(newInfos);
+            _headPresetInfoLookupSlot = _allHeadPresetInfos.ToLookup(info => info.HeadID);
+        }
+
+        internal static void RemoveFaceSkinInfosByGuid(string guid)
+        {
+            if (string.IsNullOrEmpty(guid)) return;
+            guid = guid.Trim();
+            _allFaceSkinInfos.RemoveAll(x => x.SkinGUID == guid);
+            _faceSkinInfoLookupSlot = _allFaceSkinInfos.ToLookup(info => info.SkinSlot);
+            _faceSkinInfoLookupLocalSlot = _allFaceSkinInfos.ToLookup(info => info.SkinLocalSlot);
+        }
+
+        internal static void AppendFaceSkinInfos(ICollection<FaceSkinInfo> newInfos)
+        {
+            if (newInfos == null || newInfos.Count == 0) return;
+            _allFaceSkinInfos.AddRange(newInfos);
+            foreach (var info in newInfos)
+            {
+                var resolveInfo = TryGetResolutionInfo(info.SkinSlot, ChaListDefine.CategoryNo.ft_skin_f, info.SkinGUID);
+                if (resolveInfo != null)
+                    info.SkinLocalSlot = resolveInfo.LocalSlot;
+                else
+                {
+                    resolveInfo = TryGetResolutionInfo(info.SkinSlot, ChaListDefine.CategoryNo.mt_skin_f, info.SkinGUID);
+                    if (resolveInfo != null)
+                        info.SkinLocalSlot = resolveInfo.LocalSlot;
+                }
+            }
+            _faceSkinInfoLookupSlot = _allFaceSkinInfos.ToLookup(info => info.SkinSlot);
+            _faceSkinInfoLookupLocalSlot = _allFaceSkinInfos.ToLookup(info => info.SkinLocalSlot);
+        }
+#endif
+
+        // === END ADDED ===
     }
 }
+
