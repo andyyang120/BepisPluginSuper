@@ -1,0 +1,56 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+    
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
+    
+    - name: Restore NuGet packages
+      run: nuget restore BepisPlugins.sln
+    
+    - name: Build Release
+      run: msbuild BepisPlugins.sln /p:Configuration=Release /p:Platform="Any CPU"
+    
+    - name: Package AI
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path "release/AI/BepInEx/plugins"
+        Copy-Item -Path "bin/Release/AI*/*.dll" -Destination "release/AI/BepInEx/plugins/" -ErrorAction SilentlyContinue
+        Compress-Archive -Path "release/AI/*" -DestinationPath "AI-BepisPluginSuper-${{ github.ref_name }}.zip"
+    
+    - name: Package HS2
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path "release/HS2/BepInEx/plugins"
+        Copy-Item -Path "bin/Release/HS2*/*.dll" -Destination "release/HS2/BepInEx/plugins/" -ErrorAction SilentlyContinue
+        Compress-Archive -Path "release/HS2/*" -DestinationPath "HS2-BepisPluginSuper-${{ github.ref_name }}.zip"
+    
+    - name: Package KK
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path "release/KK/BepInEx/plugins"
+        Copy-Item -Path "bin/Release/KK*/*.dll" -Destination "release/KK/BepInEx/plugins/" -ErrorAction SilentlyContinue
+        Compress-Archive -Path "release/KK/*" -DestinationPath "KK-BepisPluginSuper-${{ github.ref_name }}.zip"
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          AI-BepisPluginSuper-*.zip
+          HS2-BepisPluginSuper-*.zip
+          KK-BepisPluginSuper-*.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
