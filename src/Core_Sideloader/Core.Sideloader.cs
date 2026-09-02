@@ -36,7 +36,7 @@ namespace Sideloader
         /// <summary> Plugin name </summary>
         public const string PluginName = "Sideloader (Hot Reload)";
         /// <summary> Plugin version </summary>
-        public const string Version = "21.2.0"; // Hot Reload Edition
+        public const string Version = BepisPlugins.Constants.Version;
         internal static new ManualLogSource Logger;
 
         /// <summary> Directory from which to load mods </summary>
@@ -124,8 +124,8 @@ namespace Sideloader
             if (!AdditionalModsDirectory.Value.IsNullOrWhiteSpace() && !Directory.Exists(AdditionalModsDirectory.Value))
                 Logger.LogWarning("Could not find the additional mods directory specified in config: " + AdditionalModsDirectory.Value);
 
-            LoadModsFromDirectories(ModsDirectory, AdditionalModsDirectory.Value);
             _pluginVersion = Info.Metadata.Version.ToString();
+            LoadModsFromDirectories(ModsDirectory, AdditionalModsDirectory.Value);
         }
 
         #region Data loading
@@ -864,8 +864,12 @@ namespace Sideloader
 
         #region Hot Reload
 
+        private int _hotReloadFrameSkip = 0;
         private void Update()
         {
+            // 每 3 帧检查一次按键，降低输入轮询开销
+            if (++_hotReloadFrameSkip % 3 != 0) return;
+
             if (HotReloadKey.Value.IsDown() && !isReloading)
             {
                 StartCoroutine(HotReloadMods());

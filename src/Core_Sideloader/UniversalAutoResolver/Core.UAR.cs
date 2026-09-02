@@ -596,8 +596,19 @@ namespace Sideloader.AutoResolver
             }
         }
 
+        private static readonly HashSet<string> _shownMissingModGuids = new HashSet<string>();
+
         internal static void ShowGUIDError(string guid, string author, string website, string name)
         {
+            guid = guid?.Trim();
+            if (string.IsNullOrEmpty(guid)) return;
+
+            // 同一 GUID 的缺失警告只输出一次，避免卡片加载时刷屏卡顿
+            lock (_shownMissingModGuids)
+            {
+                if (!_shownMissingModGuids.Add(guid)) return;
+            }
+
             Logging.LogLevel loglevel = Sideloader.MissingModWarning.Value ? Logging.LogLevel.Warning | Logging.LogLevel.Message : Logging.LogLevel.Warning;
 
             if (LoadedResolutionInfo.Any(x => x.GUID == guid))
