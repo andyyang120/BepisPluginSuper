@@ -111,6 +111,13 @@ namespace Sideloader
                 new KeyboardShortcut(KeyCode.D, KeyCode.LeftControl),
                 "Press this key combination to hot-reload zipmods at runtime without restarting the game. Click the box and press your desired keys.");
 
+            // Ensure default side-load directory modsOne exists
+            string modsOnePath = Path.Combine(Paths.GameRootPath, "modsOne");
+            if (!Directory.Exists(modsOnePath))
+                Directory.CreateDirectory(modsOnePath);
+            if (AdditionalModsDirectory.Value.IsNullOrWhiteSpace())
+                AdditionalModsDirectory.Value = modsOnePath;
+
             if (!Directory.Exists(ModsDirectory))
                 Logger.LogWarning("Could not find the mods directory: " + ModsDirectory);
 
