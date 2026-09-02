@@ -23,29 +23,71 @@ jobs:
       run: nuget restore BepisPlugins.sln
     
     - name: Build Solution
-      run: msbuild BepisPlugins.sln /p:Configuration=Release /p:Platform="Any CPU" /verbosity:normal
+      run: msbuild BepisPlugins.sln /p:Configuration=Release /p:Platform="Any CPU"
     
-    - name: List output files (debug)
+    - name: Debug - List compiled output
       shell: pwsh
       run: |
-        Write-Host "=== 查找编译输出的 DLL ==="
-        Get-ChildItem -Recurse -Filter "*.dll" | Where-Object { $_.FullName -like "*Release*" } | Select-Object FullName, Length
+        Write-Host "=== bin/BepInEx/plugins/ ==="
+        if (Test-Path "bin/BepInEx/plugins") {
+          Get-ChildItem -Recurse "bin/BepInEx/plugins" | Select-Object FullName
+        } else {
+          Write-Host "NOT FOUND"
+        }
+        
+        Write-Host "=== bin/out/ ==="
+        if (Test-Path "bin/out") {
+          Get-ChildItem "bin/out" | Select-Object FullName
+        } else {
+          Write-Host "NOT FOUND"
+        }
     
-    - name: Upload build artifacts
+    - name: Package plugins by game prefix
+      shell: pwsh
+      run: |
+        $pluginDirs = Get-ChildItem -Path "bin/BepInEx/plugins" -Filter "*_BepisPlugins" -Directory -ErrorAction SilentlyContinue
+        if (-not $pluginDirs) {
+          Write-Error "No plugin directories found in bin/BepInEx/plugins/"
+          exit 1
+        }
+        
+        New-Item -ItemType Directory -Force -Path "bin/out" | Out-Null
+        
+        foreach ($dir in $pluginDirs) {
+          $prefix = $dir.Name.Split("_")[0]
+          $zipName = "bin/out/{0}_BepisPluginSuper_{1}.zip" -f $prefix, "${{ github.ref_name }}"
+          
+          Write-Host "Packaging $($dir.Name) -> $zipName"
+          
+          # 创建临时目录结构
+          $temp = "bin/temp_$prefix/BepInEx/plugins/$($dir.Name)"
+          New-Item -ItemType Directory -Force -Path $temp | Out-Null
+          
+          # 复制 DLL 和 README/LICENSE
+          Copy-Item -Path "$($dir.FullName)/*" -Destination $temp -Recurse -Force
+          if (Test-Path "README.md") { Copy-Item "README.md" $temp -Force }
+          if (Test-Path "LICENSE") { Copy-Item "LICENSE" $temp -Force }
+          
+          # 打包
+          Compress-Archive -Path "bin/temp_$prefix/*" -DestinationPath $zipName -Force
+          
+          # 清理临时目录
+          Remove-Item -Path "bin/temp_$prefix" -Recurse -Force
+        }
+        
+        Write-Host "=== Output zips ==="
+        Get-ChildItem "bin/out" | Select-Object Name, Length
+    
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: BepisPluginSuper-Build
-        path: |
-          **/bin/Release/**/*.dll
-          **/bin/Release/**/*.pdb
-        if-no-files-found: warn
+        path: bin/out/*.zip
     
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        files: |
-          **/bin/Release/**/*.dll
-          **/bin/Release/**/*.pdb
+        files: bin/out/*.zip
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
